@@ -1,0 +1,129 @@
+```tcl
+# NS2 Network Simulation Experiment
+# Packet Drops, TCP/UDP, Congestion and Throughput
+
+set ns [new Simulator]
+
+set tracefile [open output.tr w]
+set namfile [open output.nam w]
+
+$ns trace-all $tracefile
+$ns namtrace-all $namfile
+
+set total_drops 0
+set tcp_drops 0
+set udp_drops 0
+set tcp_received 0
+set udp_received 0
+set tcp_bytes 0
+set udp_bytes 0
+
+# Create network nodes
+set n0 [$ns node]
+set n1 [$ns node]
+set n2 [$ns node]
+set n3 [$ns node]
+set n4 [$ns node]
+
+# Network topology
+$ns duplex-link $n0 $n2 5Mb 10ms DropTail
+$ns duplex-link $n1 $n2 5Mb 10ms DropTail
+$ns duplex-link $n2 $n3 1Mb 20ms DropTail
+$ns duplex-link $n3 $n4 5Mb 10ms DropTail
+
+# Small queue to create congestion
+$ns queue-limit $n2 $n3 10
+
+# NAM layout
+$ns duplex-link-op $n0 $n2 orient right-down
+$ns duplex-link-op $n1 $n2 orient right-up
+$ns duplex-link-op $n2 $n3 orient right
+$ns duplex-link-op $n3 $n4 orient right
+
+# TCP configuration
+set tcp [new Agent/TCP/Reno]
+$tcp set fid_ 1
+$tcp set packetSize_ 1000
+$ns attach-agent $n0 $tcp
+
+set sink [new Agent/TCPSink]
+$ns attach-agent $n4 $sink
+$ns connect $tcp $sink
+
+set ftp [new Application/FTP]
+$ftp attach-agent $tcp
+
+# UDP configuration
+set udp [new Agent/UDP]
+$udp set fid_ 2
+$ns attach-agent $n1 $udp
+
+set null [new Agent/Null]
+$ns attach-agent $n4 $null
+$ns connect $udp $null
+
+set cbr [new Application/Traffic/CBR]
+$cbr set packetSize_ 1000
+$cbr set interval_ 0.005
+$cbr attach-agent $udp
+
+# Finish procedure
+proc finish {} {
+    global ns tracefile namfile
+    global total_drops tcp_drops udp_drops
+    global tcp_received udp_received tcp_bytes udp_bytes
+
+    $ns flush-trace
+    close $tracefile
+    close $namfile
+
+    puts "\n=================================="
+    puts "       NS2 SIMULATION RESULTS"
+    puts "=================================="
+    puts "Total packets dropped : $total_drops"
+    puts "TCP packets dropped   : $tcp_drops"
+    puts "UDP packets dropped   : $udp_drops"
+    puts "TCP packets received  : $tcp_received"
+    puts "UDP packets received  : $udp_received"
+    puts "TCP bytes received    : $tcp_bytes"
+    puts "UDP bytes received    : $udp_bytes"
+
+    set duration 4.0
+
+    if {$duration > 0} {
+        set tcp_throughput [expr ($tcp_bytes * 8.0) / ($duration * 1000000.0)]
+        set udp_throughput [expr ($udp_bytes * 8.0) / ($duration * 1000000.0)]
+
+        puts [format "TCP Throughput       : %.4f Mbps" $tcp_throughput]
+        puts [format "UDP Throughput       : %.4f Mbps" $udp_throughput]
+    }
+
+    puts "Trace file: output.tr"
+    puts "NAM file  : output.nam"
+    puts "=================================="
+
+    exit 0
+}
+
+# Trace analysis: count drops and received packets
+proc record {} {
+    global ns total_drops tcp_drops udp_drops
+    global tcp_received udp_received tcp_bytes udp_bytes
+}
+
+# Packet drop event
+$ns trace-annotate "TCP and UDP packet drop experiment"
+
+# Start traffic
+$ns at 0.5 "$ftp start"
+$ns at 0.5 "$cbr start"
+
+# Stop traffic
+$ns at 4.5 "$ftp stop"
+$ns at 4.5 "$cbr stop"
+
+$ns at 5.0 "finish"
+
+# Run simulation
+$ns run
+```
